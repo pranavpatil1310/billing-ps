@@ -274,44 +274,60 @@ function generateTextReceipt(token, cartMap, total, dateStr) {
   return txt;
 }
 
-// Updated processAndPrint function
+// Generates formatted text for 58mm thermal printers (32 chars per line)
+function generateTextReceipt(token, cartMap, total, dateStr) {
+  const W = 32;
+  const center = str => ' '.repeat(Math.max(0, Math.floor((W - str.length) / 2))) + str;
+  const justify = (l, r) => l + ' '.repeat(Math.max(1, W - l.length - r.length)) + r;
+  const divider = '-'.repeat(W) + '\n';
+
+  let txt = 'VEG BITE\n';
+  txt += 'College Canteen\n';
+  txt += divider;
+  txt += `TOKEN NO: ${token}\n`;
+  txt += `Date: ${dateStr}\n`;
+  txt += divider;
+
+  cartMap.forEach((item) => {
+    txt += `${item.name}\n`;
+    txt += justify(`  ${item.qty} x Rs.${item.price}`, `Rs.${(item.qty * item.price).toFixed(2)}`) + '\n';
+  });
+
+  txt += divider;
+  txt += justify('TOTAL:', `Rs.${total.toFixed(2)}`) + '\n';
+  txt += divider;
+  txt += center('*** Thank You! Visit Again ***') + '\n\n\n\n';
+
+  return txt;
+}
+
 function processAndPrint() {
   if (state.cart.size === 0) return alert('Your cart is empty!');
 
   let sum = 0;
   const orderItems = [];
-
   state.cart.forEach(i => {
     sum += i.qty * i.price;
     orderItems.push({ name: i.name, price: i.price, qty: i.qty });
   });
 
   const dateStr = new Date().toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
+  const rawText = generateTextReceipt(state.token, state.cart, sum, dateStr);
 
-  // 1. Generate text receipt string
-  const plainTextReceipt = generateTextReceipt(state.token, state.cart, sum, dateStr);
-
-  // 2. Save sales record to LocalStorage / Firestore
-  const orderRecord = {
-    token: state.token,
-    items: orderItems,
-    total: sum,
-    createdAt: new Date().toISOString()
-  };
-
+  // Save sales record
+  const orderRecord = { token: state.token, items: orderItems, total: sum, createdAt: new Date().toISOString() };
   const sales = JSON.parse(localStorage.getItem('vb_sales')) || [];
   sales.push(orderRecord);
   localStorage.setItem('vb_sales', JSON.stringify(sales));
-
   if (db) db.collection('orders').add(orderRecord);
 
   closeCartModal();
 
-  // 3. Send text payload directly to RawBT app via Android Intent Scheme
-  const intentUrl = "intent:" + encodeURIComponent(plainTextReceipt) + "#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;";
-  window.location.href = intentUrl;
+  // Open RawBT scheme directly with raw text payload
+  const rawBtUrl = "rawbt:" + encodeURIComponent(rawText);
+  window.location.href = rawBtUrl;
 
-  // 4. Reset counter and cart state
+  // Reset order state
   state.token++;
   localStorage.setItem('vb_token', state.token);
   state.cart.clear();
