@@ -301,37 +301,122 @@ function generateTextReceipt(token, cartMap, total, dateStr) {
   return txt;
 }
 
-function processAndPrint() {
-  if (state.cart.size === 0) return alert('Your cart is empty!');
+let printerDevice = null;
+let printerCharacteristic = null;
 
-  let sum = 0;
-  const orderItems = [];
-  state.cart.forEach(i => {
-    sum += i.qty * i.price;
-    orderItems.push({ name: i.name, price: i.price, qty: i.qty });
+// Connect directly to the thermal printer via Bluetooth GATT
+async function getPrinterCharacteristic() {
+  if (printerCharacteristic && printerDevice && printerDevice.gatt.connected) {
+    return printerCharacteristic;
+  }
+
+  // Request Bluetooth connection with common thermal printer GATT services
+  printerDevice = await navigator.bluetooth.requestDevice({
+    acceptAllDevices: true,
+    optionalServices: [
+      '000018f0-0000-1000-8000-00805f9b34fb',
+      '00001101-0000-1000-8000-00805f9b34fb',
+      '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+      'e7810a71-73ae-499d-8c15-faa9aef0c3f2'
+    ]
   });
 
-  const dateStr = new Date().toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
-  const rawText = generateTextReceipt(state.token, state.cart, sum, dateStr);
+  const server = await printerDevice.gatt.connect();
+  const services = await server.getPrimaryServices();
 
-  // Save sales record
-  const orderRecord = { token: state.token, items: orderItems, total: sum, createdAt: new Date().toISOString() };
-  const sales = JSON.parse(localStorage.getItem('vb_sales')) || [];
-  sales.push(orderRecord);
-  localStorage.setItem('vb_sales', JSON.stringify(sales));
-  if (db) db.collection('orders').add(orderRecord);
+  for (const service of services) {
+    const characteristics = await service.getCharacteristics();
+    for (const char of characteristics) {
+      if (char.properties.write || char.properties.writeWithoutResponse) {
+        printerCharacteristic = char;
+        return printerCharacteristic;
+      }
+    }
+  }
 
-  closeCartModal();
+  throw new Error("No writable printing service found on this Bluetooth device.");
+}
 
-  // Open RawBT scheme directly with raw text payload
-  const rawBtUrl = "rawbt:" + encodeURIComponent(rawText);
-  window.location.href = rawBtUrl;
+// Generate raw 32-column text string using native ESC/POS ESC @ initialization
+function generateRawAsciiReceipt(token, cartMap, total, dateStr) {
+  const W = 32;
+  const center = str => ' '.repeat(Math.max(0, Math.floor((W - str.length) / 2))) + str;
+  const justify = (l, r) => l + ' '.repeat(Math.max(1, W - l.length - r.length)) + r;
+  const divider = '-'.repeat(W) + '\n';
 
-  // Reset order state
-  state.token++;
-  localStorage.setItem('vb_token', state.token);
-  state.cart.clear();
-  updateTokenUI();
-  renderItems();
-  updateCartUI();
+  let txt = '\x1b\x40'; // ESC @ : Reset/Initialize printer
+  txt += center('VEG BITE') + '\n';
+  txt += center('College Canteen') + '\n';
+  txt += divider;
+  txt += `TOKEN NO: ${token}\n`;
+  txt += `Date: ${dateStr}\n`;
+  txt += divider;
+
+  cartMap.forEach((item) => {
+    txt += `${item.name}\n`;
+    txt += justify(`  ${item.qty} x Rs.${item.price}`, `Rs.${(item.qty * item.price).toFixed(2)}`) + '\n';
+  });
+
+  txt += divider;
+  txt += justify('TOTAL:', `Rs.${total.toFixed(2)}`) + '\n';
+  txt += divider;
+  txt += center('*** Thank You! Visit Again ***') + '\n\n\n\n\n';
+
+  return txt;
+}
+
+// Main printing handler triggered from the Cart Modal
+async function processAndPrint() {
+  if (state.cart.size === 0) return alert('Your cart is empty!');
+
+  try {
+    // 1. Establish direct Web Bluetooth GATT connection
+    const char = await getPrinterCharacteristic();
+
+    let sum = 0;
+    const orderItems = [];
+    state.cart.forEach(i => {
+      sum += i.qty * i.price;
+      orderItems.push({ name: i.name, price: i.price, qty: i.qty });
+    });
+
+    const dateStr = new Date().toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
+    const rawText = generateRawAsciiReceipt(state.token, state.cart, sum, dateStr);
+
+    // 2. Encode text payload to Uint8Array byte buffer
+    const encoder = new TextEncoder();
+    const data = encoder.encode(rawText);
+
+    // 3. Send raw ESC/POS bytes over Bluetooth in small chunks (20 bytes per BLE packet)
+    const CHUNK_SIZE = 20;
+    for (let i = 0; i < data.length; i += CHUNK_SIZE) {
+      const chunk = data.slice(i, i + CHUNK_SIZE);
+      if (char.properties.writeWithoutResponse) {
+        await char.writeValueWithoutResponse(chunk);
+      } else {
+        await char.writeValue(chunk);
+      }
+    }
+
+    // 4. Save order to local storage and Firestore
+    const orderRecord = { token: state.token, items: orderItems, total: sum, createdAt: new Date().toISOString() };
+    const sales = JSON.parse(localStorage.getItem('vb_sales')) || [];
+    sales.push(orderRecord);
+    localStorage.setItem('vb_sales', JSON.stringify(sales));
+    if (db) db.collection('orders').add(orderRecord);
+
+    closeCartModal();
+
+    // 5. Reset order counters and cart UI
+    state.token++;
+    localStorage.setItem('vb_token', state.token);
+    state.cart.clear();
+    updateTokenUI();
+    renderItems();
+    updateCartUI();
+
+  } catch (err) {
+    console.error("Web Bluetooth Print Error:", err);
+    alert("Print Error: " + err.message);
+  }
 }
