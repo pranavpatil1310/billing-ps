@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Veg Bite POS</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+  <!-- Editorial Dark Charcoal Top Navigation -->
+  <header class="navbar">
+    <div class="brand-wrapper">
+      <div class="brand-logo">VB</div>
+      <div class="brand-info">
+        <h1>Veg Bite</h1>
+        <p>Food billing & counter operations</p>
+      </div>
+    </div>
+    
+    <!-- Top Bar Navigation Buttons -->
+    <div class="top-nav-buttons">
+      <a href="admin.html" class="nav-btn-admin">Admin</a>
+      <button class="nav-btn-cart" onclick="openCartModal()">
+        🛒 Cart (<span id="topCartQty">0</span>)
+      </button>
+    </div>
+  </header>
+
+  <!-- Workspace Subhead & Token Display -->
+  <div class="page-subhead">
+    <div class="subhead-title">
+      <span>Counter Workspace</span>
+      <h2>Build an order</h2>
+    </div>
+    <span class="token-badge" id="tokenDisplay">Token #1</span>
+  </div>
+
+  <main class="mobile-container">
+    <!-- Live Search Bar -->
+    <div class="search-box">
+      <input type="text" id="searchInput" placeholder="🔍 Search dishes (e.g. Samosa, Coffee)..." oninput="handleSearch()">
+    </div>
+
+    <!-- Category Filter Bar -->
+    <div class="cat-bar" id="catBar"></div>
+
+    <!-- Dish Card Grid -->
+    <div class="item-grid" id="itemGrid"></div>
+  </main>
+
+  <!-- Cart Modal Sheet -->
+  <div class="modal-overlay" id="cartModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Current Order (<span id="modalToken">Token #1</span>)</h3>
+        <button class="btn-close" onclick="closeCartModal()">&times;</button>
+      </div>
+
+      <div class="cart-list" id="cartList">
+        <div class="empty-state">Your order is empty. Add an item from the menu.</div>
+      </div>
+
+      <div class="checkout-box">
+        <div class="row">
+          <span>Total Payable:</span>
+          <span class="total-text">₹<strong id="totalPayable">0.00</strong></span>
+        </div>
+
+        <div class="action-btn-group">
+          <button class="btn-clear" onclick="clearCart()">Clear Order</button>
+          <button class="btn-print" onclick="processAndPrint()">Print Receipt</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Thermal Printable Receipt Layout -->
+  <div id="printTicket" class="print-only">
+    <div class="t-center">
+      <h2>VEG BITE</h2>
+      <p>College Canteen</p>
+      <p>-----------------------------</p>
+      <h3>TOKEN NO: <span id="tToken">--</span></h3>
+      <p>Date: <span id="tDate"></span></p>
+      <p>-----------------------------</p>
+    </div>
+    
+    <div class="t-row bold">
+      <span>Item</span>
+      <span>Qty x Price</span>
+      <span>Amt</span>
+    </div>
+    <p>-----------------------------</p>
+    
+    <div id="tItems"></div>
+    <p>-----------------------------</p>
+    
+    <div class="t-row bold-large">
+      <span>TOTAL:</span>
+      <span>₹<span id="tTotal">0.00</span></span>
+    </div>
+    
+    <p>-----------------------------</p>
+    <div class="t-center">
+      
+      <h3>* Thank You! Visit Again *</h3>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js')
+          .then(() => console.log('Offline Service Worker Registered!'))
+          .catch((err) => console.log('Service Worker Failed:', err));
+      });
+    }
+  </script>
+</body>
+</html>

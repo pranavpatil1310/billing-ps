@@ -1,0 +1,9 @@
+{
+  "name": "Veg Bite POS",
+  "short_name": "VegBite",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#1e2220",
+  "theme_color": "#1e2220",
+  "orientation": "portrait"
+}

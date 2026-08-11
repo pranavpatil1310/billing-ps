@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Veg Bite Admin</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Firebase Compat SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <header class="navbar">
+    <div class="brand-wrapper">
+      <div class="brand-logo">VB</div>
+      <div class="brand-info">
+        <h1>Veg Bite Admin</h1>
+        <p>Menu & Sales Management</p>
+      </div>
+    </div>
+    <div class="top-nav-buttons">
+      <a href="index.html" class="nav-btn-admin">Back to POS</a>
+    </div>
+  </header>
+
+  <main class="admin-grid">
+    <!-- Chart Section -->
+    <section class="card">
+      <div class="chart-header">
+        <h3>Revenue Analytics</h3>
+        <select id="chartFilter" class="chart-filter" aria-label="Revenue chart time period" onchange="updateChart()">
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly">Monthly</option>
+        </select>
+      </div>
+      <canvas id="salesChart" height="200"></canvas>
+    </section>
+
+    <!-- Today's Stats -->
+    <section class="card stats-card">
+      <div class="stat-card">
+        <p class="stat-label">Total Revenue (Today)</p>
+        <h2 id="revStat" class="revenue-value">₹0</h2>
+      </div>
+      <div class="stat-card">
+        <p class="stat-label">Total Orders (Today)</p>
+        <h2 id="orderStat">0</h2>
+      </div>
+      <button type="button" class="btn-danger reset-sales-btn" onclick="resetDaySales()">Reset Today's Sales Counter</button>
+    </section>
+
+    <!-- Form & Menu Management -->
+    <section class="card">
+      <h3 id="formTitle">Add New Item</h3>
+      <form id="menuForm">
+        <input type="hidden" id="pId">
+        <input type="text" id="pName" placeholder="Dish Name (e.g. Paneer Roll)" required>
+        <input type="number" id="pPrice" placeholder="Price (₹)" step="1" required>
+        <input type="text" id="pCat" placeholder="Category (e.g. Snacks)" required>
+        
+        <label class="image-label">Dish Image (Auto-compressed to ~10KB):</label>
+        <input type="file" id="pImage" accept="image/*" aria-label="Dish image">
+        <input type="hidden" id="pImgBase64">
+
+        <div class="form-actions">
+          <button type="submit" id="saveBtn" class="btn-primary form-save-btn">Save Dish</button>
+          <button type="button" id="cancelEditBtn" onclick="resetForm()" class="btn-clear form-cancel-btn">Cancel</button>
+        </div>
+      </form>
+
+      <div class="menu-list-header">
+        <h3>Menu List</h3>
+        <input type="text" id="adminSearchInput" class="chart-filter" placeholder="🔍 Search menu..." oninput="renderTable()">
+      </div>
+
+      <table class="data-table" id="menuTable">
+        <thead>
+          <tr><th>Img</th><th>Dish</th><th>Price</th><th>Action</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script src="admin.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js')
+          .then(() => console.log('Offline Service Worker Registered!'))
+          .catch((err) => console.log('Service Worker Failed:', err));
+      });
+    }
+  </script>
+</body>
+</html>
