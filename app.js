@@ -420,3 +420,62 @@ async function processAndPrint() {
     alert("Print Error: " + err.message);
   }
 }
+// History Modal Functions
+function openHistoryModal() {
+  const today = new Date().toISOString().split('T')[0];
+  const dateInput = document.getElementById('historyDateFilter');
+  if (!dateInput.value) {
+    dateInput.value = today;
+  }
+  renderHistory();
+  document.getElementById('historyModal').classList.add('active');
+}
+
+function closeHistoryModal() {
+  document.getElementById('historyModal').classList.remove('active');
+}
+
+function renderHistory() {
+  const selectedDate = document.getElementById('historyDateFilter').value;
+  const historyList = document.getElementById('historyList');
+  const sales = JSON.parse(localStorage.getItem('vb_sales')) || [];
+
+  // Filter orders matching the selected date
+  const filteredSales = sales.filter(s => s.createdAt && s.createdAt.startsWith(selectedDate)).reverse();
+
+  let dayTotal = 0;
+  filteredSales.forEach(s => dayTotal += (s.total || 0));
+
+  document.getElementById('historyDayRev').textContent = `₹${dayTotal.toFixed(2)}`;
+  document.getElementById('historyDayCount').textContent = filteredSales.length;
+
+  if (filteredSales.length === 0) {
+    historyList.innerHTML = '<div class="empty-state">No orders recorded for this date.</div>';
+    return;
+  }
+
+  historyList.innerHTML = filteredSales.map(order => {
+    const timeStr = new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    
+    const itemsHtml = (order.items || []).map(item => `
+      <div class="history-item-row">
+        <span>${item.name} (${item.qty} × ₹${item.price})</span>
+        <strong>₹${(item.qty * item.price).toFixed(2)}</strong>
+      </div>
+    `).join('');
+
+    return `
+      <div class="history-card">
+        <div class="history-card-header">
+          <strong>Token #${order.token}</strong>
+          <span style="color: var(--text-muted);">${timeStr}</span>
+        </div>
+        <div>${itemsHtml}</div>
+        <div class="history-card-footer">
+          <span>Total Amount</span>
+          <span style="color: var(--rust-btn);">₹${Number(order.total).toFixed(2)}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}

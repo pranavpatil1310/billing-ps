@@ -577,3 +577,80 @@ body {
   .bold { font-weight: bold !important; }
   .bold-large { font-weight: bold !important; font-size: 14px !important; }
 }
+/* History Navbar Button */
+.nav-btn-history {
+  background: #3b5e48;
+  color: #ffffff;
+  border: none;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+/* History Modal Custom Styling */
+.history-modal-content {
+  max-height: 90vh;
+}
+
+.history-controls {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-summary-box {
+  display: flex;
+  justify-content: space-between;
+  background: #ede8dc;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.history-list {
+  flex: 1;
+  overflow-y: auto;
+  margin: 14px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.history-card {
+  background: #ffffff;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  box-shadow: var(--shadow-subtle);
+}
+
+.history-card-header {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px dashed var(--card-border);
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  font-size: 0.85rem;
+}
+
+.history-item-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  color: var(--text-main);
+  padding: 2px 0;
+}
+
+.history-card-footer {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--card-border);
+  font-weight: 800;
+  font-size: 0.9rem;
+}
