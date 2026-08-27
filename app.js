@@ -299,6 +299,11 @@ function processAndPrint() {
 
   const rawText = generate4ColumnReceipt(state.token, state.cart, sum, dateStr);
 
+  // Preview receipt directly in browser console & screen alert (no printer needed)
+  console.log("%c--- 4-COLUMN RECEIPT PREVIEW ---", "color: #3b5e48; font-weight: bold; font-size: 14px;");
+  console.log(rawText);
+  alert("RECEIPT PREVIEW:\n\n" + rawText);
+
   // Save record to LocalStorage and Firestore
   const orderRecord = { 
     token: state.token, 
