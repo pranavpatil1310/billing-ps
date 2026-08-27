@@ -12,6 +12,11 @@ let db = null;
 if (typeof firebase !== 'undefined') {
   firebase.initializeApp(firebaseConfig);
   db = firebase.firestore();
+  
+  // Enable Firestore built-in offline persistence
+  firebase.firestore().enablePersistence().catch(err => {
+    console.warn("Firestore offline persistence warning:", err.code);
+  });
 }
 
 // 1. Daily Token Reset Logic
@@ -50,7 +55,12 @@ document.addEventListener('DOMContentLoaded', () => {
   renderItems();
   updateTokenUI();
 
+  // Listen for online status & sync pending offline orders
+  window.addEventListener('online', syncOfflineOrdersToCloud);
+  syncOfflineOrdersToCloud();
+
   if (db) {
+    // Menu sync
     db.collection('menu').onSnapshot((snapshot) => {
       if (!snapshot.empty) {
         const cloudMenu = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -60,8 +70,59 @@ document.addEventListener('DOMContentLoaded', () => {
         renderItems();
       }
     });
+
+    // Orders live sync across all devices
+    db.collection('orders').onSnapshot((snapshot) => {
+      if (!snapshot.empty) {
+        const cloudOrders = snapshot.docs.map(doc => ({ ...doc.data(), synced: true }));
+        const localSales = JSON.parse(localStorage.getItem('vb_sales')) || [];
+        
+        // Merge cloud orders with local unsynced orders
+        const unsyncedLocal = localSales.filter(s => s.synced === false);
+        const merged = [...cloudOrders];
+
+        unsyncedLocal.forEach(localOrder => {
+          if (!merged.some(m => m.createdAt === localOrder.createdAt && m.token === localOrder.token)) {
+            merged.push(localOrder);
+          }
+        });
+
+        localStorage.setItem('vb_sales', JSON.stringify(merged));
+        const historyModal = document.getElementById('historyModal');
+        if (historyModal && historyModal.classList.contains('active')) {
+          renderHistory();
+        }
+      }
+    });
   }
 });
+
+// Auto-sync offline orders when internet is connected
+async function syncOfflineOrdersToCloud() {
+  if (!navigator.onLine || !db) return;
+
+  const sales = JSON.parse(localStorage.getItem('vb_sales')) || [];
+  const unsynced = sales.filter(item => item.synced === false);
+
+  if (unsynced.length === 0) return;
+
+  for (const order of unsynced) {
+    try {
+      const orderPayload = {
+        token: order.token,
+        items: order.items,
+        total: order.total,
+        createdAt: order.createdAt
+      };
+      await db.collection('orders').add(orderPayload);
+      order.synced = true;
+    } catch (err) {
+      console.warn("Could not sync order yet:", err.message);
+    }
+  }
+
+  localStorage.setItem('vb_sales', JSON.stringify(sales));
+}
 
 function updateTokenUI() {
   if (DOM.tokenDisplay) DOM.tokenDisplay.textContent = `Token #${state.token}`;
@@ -227,13 +288,13 @@ function closeCartModal() {
   document.getElementById('cartModal').classList.remove('active');
 }
 
-// Clean 4-Column Minimal Receipt Builder
+// 4-Column Clean Receipt Builder
 function generate4ColumnReceipt(token, cartMap, total, dateStr) {
   const W = 32;
   const divider = '-'.repeat(W) + '\n';
   const center = str => ' '.repeat(Math.max(0, Math.floor((W - str.length) / 2))) + str;
 
-  let txt = '\x1b\x40'; // ESC @ : Initialize printer
+  let txt = '\x1b\x40'; // ESC @
   txt += center('VEG BITE CAFETERIA') + '\n\n';
   txt += `Token No: ${token}\n`;
   txt += `Created On: ${dateStr}\n`;
@@ -350,19 +411,39 @@ async function processAndPrint() {
 
   showThermalPreview(rawText);
 
+  // Determine online sync status
+  const isOnline = navigator.onLine;
   const orderRecord = { 
     token: state.token, 
     items: orderItems, 
     total: sum, 
-    createdAt: new Date().toISOString() 
+    createdAt: new Date().toISOString(),
+    synced: isOnline
   };
+
+  // 1. Always save immediately to local storage
   const sales = JSON.parse(localStorage.getItem('vb_sales')) || [];
   sales.push(orderRecord);
   localStorage.setItem('vb_sales', JSON.stringify(sales));
-  if (db) db.collection('orders').add(orderRecord);
+
+  // 2. If online, push directly to Firestore
+  if (isOnline && db) {
+    const orderPayload = {
+      token: state.token,
+      items: orderItems,
+      total: sum,
+      createdAt: orderRecord.createdAt
+    };
+    db.collection('orders').add(orderPayload).catch(err => {
+      console.warn("Firestore save deferred:", err.message);
+      orderRecord.synced = false;
+      localStorage.setItem('vb_sales', JSON.stringify(sales));
+    });
+  }
 
   closeCartModal();
 
+  // Print via Bluetooth
   if (navigator.bluetooth) {
     try {
       const char = await getPrinterCharacteristic();
@@ -379,7 +460,7 @@ async function processAndPrint() {
         }
       }
     } catch (err) {
-      console.warn("Bluetooth device print:", err.message);
+      console.warn("Bluetooth print deferred:", err.message);
     }
   }
 
@@ -430,6 +511,7 @@ function renderHistory() {
 
   historyList.innerHTML = filteredSales.map(order => {
     const timeStr = new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const syncBadge = order.synced === false ? '<span style="color:#e65100; font-size:11px;">(Pending Cloud Sync)</span>' : '';
     
     const itemsHtml = (order.items || []).map(item => `
       <div class="history-item-row">
@@ -441,7 +523,7 @@ function renderHistory() {
     return `
       <div class="history-card">
         <div class="history-card-header">
-          <strong>Token #${order.token}</strong>
+          <strong>Token #${order.token} ${syncBadge}</strong>
           <span style="color: var(--text-muted);">${timeStr}</span>
         </div>
         <div>${itemsHtml}</div>

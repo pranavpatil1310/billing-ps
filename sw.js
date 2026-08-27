@@ -1,5 +1,5 @@
 // Top line of sw.js
-const CACHE_NAME = 'vegbite-pos-v20'; // <--- Change v1 to v25 here!
+const CACHE_NAME = 'vegbite-pos-v20'; // <--- Change v1 to v26 here!
 const ASSETS = [
   './',
   './index.html',
