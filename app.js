@@ -21,7 +21,6 @@ if (localStorage.getItem('vb_last_date') !== todayStr) {
   localStorage.setItem('vb_last_date', todayStr);
 }
 
-// 2. Default Menu State
 const defaultMenu = [];
 
 const state = {
@@ -228,33 +227,27 @@ function closeCartModal() {
   document.getElementById('cartModal').classList.remove('active');
 }
 
-// Generates a 4-column formatted receipt (Item Name, Qty, Rate, Total)
+// Clean 4-Column Minimal Receipt Builder
 function generate4ColumnReceipt(token, cartMap, total, dateStr) {
   const W = 32;
   const divider = '-'.repeat(W) + '\n';
   const center = str => ' '.repeat(Math.max(0, Math.floor((W - str.length) / 2))) + str;
 
-  let totalQty = 0;
-  let totalItemsCount = 0;
-
-  let txt = '\n';
+  let txt = '\x1b\x40'; // ESC @ : Initialize printer
   txt += center('VEG BITE CAFETERIA') + '\n\n';
   txt += `Token No: ${token}\n`;
   txt += `Created On: ${dateStr}\n`;
-  txt += `Bill To: Cash Sale\n`;
   txt += divider;
 
-  // 4 Columns: Item Name (14) | Qty (4) | Rate (6) | Total (8)
+  // Header: Item Name (14) | Qty (4) | Rate (6) | Total (8)
   txt += 'Item Name'.padEnd(14) + 'Qty'.padStart(4) + 'Rate'.padStart(6) + 'Total'.padStart(8) + '\n';
   txt += divider;
 
   cartMap.forEach((item) => {
-    totalItemsCount++;
-    totalQty += item.qty;
-    const itemTotal = (item.qty * item.price).toFixed(2);
-    const itemRate = Number(item.price).toFixed(2);
+    const itemTotal = String(Math.round(item.qty * item.price));
+    const itemRate = String(Math.round(item.price));
+    let name = item.name.trim();
 
-    let name = item.name;
     if (name.length > 14) {
       txt += `${name}\n`;
       txt += ''.padEnd(14) + String(item.qty).padStart(4) + itemRate.padStart(6) + itemTotal.padStart(8) + '\n';
@@ -264,22 +257,78 @@ function generate4ColumnReceipt(token, cartMap, total, dateStr) {
   });
 
   txt += divider;
-  txt += `Total Items: ${totalItemsCount}\n`;
-  txt += `Total Quantity: ${totalQty}`.padEnd(24) + `${total.toFixed(2)}`.padStart(8) + '\n';
-  txt += 'Sub Total'.padEnd(24) + `${total.toFixed(2)}`.padStart(8) + '\n';
+  txt += 'TOTAL'.padEnd(18) + `Rs.${Math.round(total)}`.padStart(14) + '\n';
   txt += divider;
-
-  txt += 'TOTAL'.padEnd(20) + `Rs.${total.toFixed(2)}`.padStart(12) + '\n';
-  txt += 'Mode of Payment'.padEnd(24) + 'Cash'.padStart(8) + '\n';
-  txt += 'Received'.padEnd(24) + `${total.toFixed(2)}`.padStart(8) + '\n';
-  txt += divider;
-  txt += center('Thank You! Visit Again!') + '\n\n\n\n';
+  txt += center('Thank You! Visit Again!') + '\n\n\n\n\n';
 
   return txt;
 }
 
-// Process Order & Trigger Thermal Print via Intent
-function processAndPrint() {
+function showThermalPreview(text) {
+  let modal = document.getElementById('thermalPreviewModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'thermalPreviewModal';
+    modal.style.position = 'fixed';
+    modal.style.top = '0';
+    modal.style.left = '0';
+    modal.style.width = '100vw';
+    modal.style.height = '100vh';
+    modal.style.backgroundColor = 'rgba(0,0,0,0.65)';
+    modal.style.display = 'flex';
+    modal.style.alignItems = 'center';
+    modal.style.justifyContent = 'center';
+    modal.style.zIndex = '999999';
+    document.body.appendChild(modal);
+  }
+
+  const cleanPreviewText = text.replace('\x1b\x40', '');
+
+  modal.innerHTML = `
+    <div style="background:#fff; padding:22px; border-radius:10px; max-width:360px; width:90%; box-shadow:0 10px 30px rgba(0,0,0,0.3);">
+      <h3 style="margin:0 0 12px 0; font-size:15px; color:#222; text-align:center;">58mm Thermal Monospace Preview</h3>
+      <pre style="font-family:'Courier New', monospace; font-size:13px; line-height:1.25; background:#fbfbfb; padding:12px; border:1px dashed #bbb; border-radius:6px; white-space:pre; margin:0; color:#111; overflow-x:auto;">${cleanPreviewText}</pre>
+      <button onclick="document.getElementById('thermalPreviewModal').style.display='none'" style="width:100%; margin-top:14px; padding:10px; background:#b23b23; color:#fff; border:none; border-radius:6px; font-weight:700; cursor:pointer;">Close Preview</button>
+    </div>
+  `;
+  modal.style.display = 'flex';
+}
+
+let printerDevice = null;
+let printerCharacteristic = null;
+
+async function getPrinterCharacteristic() {
+  if (printerCharacteristic && printerDevice && printerDevice.gatt.connected) {
+    return printerCharacteristic;
+  }
+
+  printerDevice = await navigator.bluetooth.requestDevice({
+    acceptAllDevices: true,
+    optionalServices: [
+      '000018f0-0000-1000-8000-00805f9b34fb',
+      '00001101-0000-1000-8000-00805f9b34fb',
+      '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+      'e7810a71-73ae-499d-8c15-faa9aef0c3f2'
+    ]
+  });
+
+  const server = await printerDevice.gatt.connect();
+  const services = await server.getPrimaryServices();
+
+  for (const service of services) {
+    const characteristics = await service.getCharacteristics();
+    for (const char of characteristics) {
+      if (char.properties.write || char.properties.writeWithoutResponse) {
+        printerCharacteristic = char;
+        return printerCharacteristic;
+      }
+    }
+  }
+
+  throw new Error("No writable printing service found on this Bluetooth device.");
+}
+
+async function processAndPrint() {
   if (state.cart.size === 0) return alert('Your cart is empty!');
 
   let sum = 0;
@@ -299,12 +348,8 @@ function processAndPrint() {
 
   const rawText = generate4ColumnReceipt(state.token, state.cart, sum, dateStr);
 
-  // Preview receipt directly in browser console & screen alert (no printer needed)
-  console.log("%c--- 4-COLUMN RECEIPT PREVIEW ---", "color: #3b5e48; font-weight: bold; font-size: 14px;");
-  console.log(rawText);
-  alert("RECEIPT PREVIEW:\n\n" + rawText);
+  showThermalPreview(rawText);
 
-  // Save record to LocalStorage and Firestore
   const orderRecord = { 
     token: state.token, 
     items: orderItems, 
@@ -318,12 +363,26 @@ function processAndPrint() {
 
   closeCartModal();
 
-  // Send raw text payload to RawBT
-  const base64Data = btoa(unescape(encodeURIComponent(rawText)));
-  const intentUrl = "intent:base64," + base64Data + "#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;S.bwtype=text;end;";
-  window.location.href = intentUrl;
+  if (navigator.bluetooth) {
+    try {
+      const char = await getPrinterCharacteristic();
+      const encoder = new TextEncoder();
+      const data = encoder.encode(rawText);
+      const CHUNK_SIZE = 20;
 
-  // Reset state
+      for (let i = 0; i < data.length; i += CHUNK_SIZE) {
+        const chunk = data.slice(i, i + CHUNK_SIZE);
+        if (char.properties.writeWithoutResponse) {
+          await char.writeValueWithoutResponse(chunk);
+        } else {
+          await char.writeValue(chunk);
+        }
+      }
+    } catch (err) {
+      console.warn("Bluetooth device print:", err.message);
+    }
+  }
+
   state.token++;
   localStorage.setItem('vb_token', state.token);
   state.cart.clear();
@@ -332,7 +391,6 @@ function processAndPrint() {
   updateCartUI();
 }
 
-// Sales History Modal Logic
 function openHistoryModal() {
   const today = new Date().toISOString().split('T')[0];
   const dateInput = document.getElementById('historyDateFilter');
