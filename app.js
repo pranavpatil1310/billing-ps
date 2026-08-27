@@ -21,7 +21,7 @@ if (localStorage.getItem('vb_last_date') !== todayStr) {
   localStorage.setItem('vb_last_date', todayStr);
 }
 
-// 2. Empty Default Menu (Upload via Admin now)
+// 2. Default Menu State
 const defaultMenu = [];
 
 const state = {
@@ -228,203 +228,110 @@ function closeCartModal() {
   document.getElementById('cartModal').classList.remove('active');
 }
 
-// Helper to format text lines for 58mm thermal paper (32 characters wide)
-function generateTextReceipt(token, cartMap, total, dateStr) {
-  const LINE_WIDTH = 32;
-
-  // Center align text
-  const center = (text) => {
-    if (text.length >= LINE_WIDTH) return text.substring(0, LINE_WIDTH);
-    const space = Math.floor((LINE_WIDTH - text.length) / 2);
-    return ' '.repeat(space) + text;
-  };
-
-  // Left and Right align text on a single line
-  const justify = (left, right) => {
-    const spaceNeeded = LINE_WIDTH - right.length;
-    if (left.length > spaceNeeded) {
-      left = left.substring(0, spaceNeeded - 1);
-    }
-    return left + ' '.repeat(spaceNeeded - left.length) + right;
-  };
-
-  const divider = '-'.repeat(LINE_WIDTH) + '\n';
-
-  let txt = '';
-  txt += center('VEG BITE') + '\n';
-  txt += center('College Canteen') + '\n';
-  txt += divider;
-  txt += `TOKEN NO: ${token}\n`;
-  txt += `Date: ${dateStr}\n`;
-  txt += divider;
-
-  cartMap.forEach((item) => {
-    const itemTotal = `Rs.${(item.qty * item.price).toFixed(2)}`;
-    // Line 1: Item Name
-    txt += `${item.name}\n`;
-    // Line 2: Qty x Price on left, Amount on right
-    txt += justify(`  ${item.qty} x Rs.${item.price}`, itemTotal) + '\n';
-  });
-
-  txt += divider;
-  txt += justify('TOTAL:', `Rs.${total.toFixed(2)}`) + '\n';
-  txt += divider;
-  txt += center('*** Thank You! Visit Again ***') + '\n\n\n';
-
-  return txt;
-}
-
-// Generates formatted text for 58mm thermal printers (32 chars per line)
-function generateTextReceipt(token, cartMap, total, dateStr) {
+// Generates a 4-column formatted receipt (Item Name, Qty, Rate, Total)
+function generate4ColumnReceipt(token, cartMap, total, dateStr) {
   const W = 32;
-  const center = str => ' '.repeat(Math.max(0, Math.floor((W - str.length) / 2))) + str;
-  const justify = (l, r) => l + ' '.repeat(Math.max(1, W - l.length - r.length)) + r;
   const divider = '-'.repeat(W) + '\n';
+  const center = str => ' '.repeat(Math.max(0, Math.floor((W - str.length) / 2))) + str;
 
-  let txt = 'VEG BITE\n';
-  txt += 'College Canteen\n';
+  let totalQty = 0;
+  let totalItemsCount = 0;
+
+  let txt = '\n';
+  txt += center('VEG BITE CAFETERIA') + '\n\n';
+  txt += `Token No: ${token}\n`;
+  txt += `Created On: ${dateStr}\n`;
+  txt += `Bill To: Cash Sale\n`;
   txt += divider;
-  txt += `TOKEN NO: ${token}\n`;
-  txt += `Date: ${dateStr}\n`;
+
+  // 4 Columns: Item Name (14) | Qty (4) | Rate (6) | Total (8)
+  txt += 'Item Name'.padEnd(14) + 'Qty'.padStart(4) + 'Rate'.padStart(6) + 'Total'.padStart(8) + '\n';
   txt += divider;
 
   cartMap.forEach((item) => {
-    txt += `${item.name}\n`;
-    txt += justify(`  ${item.qty} x Rs.${item.price}`, `Rs.${(item.qty * item.price).toFixed(2)}`) + '\n';
-  });
+    totalItemsCount++;
+    totalQty += item.qty;
+    const itemTotal = (item.qty * item.price).toFixed(2);
+    const itemRate = Number(item.price).toFixed(2);
 
-  txt += divider;
-  txt += justify('TOTAL:', `Rs.${total.toFixed(2)}`) + '\n';
-  txt += divider;
-  txt += center('*** Thank You! Visit Again ***') + '\n\n\n\n';
-
-  return txt;
-}
-
-let printerDevice = null;
-let printerCharacteristic = null;
-
-// Connect directly to the thermal printer via Bluetooth GATT
-async function getPrinterCharacteristic() {
-  if (printerCharacteristic && printerDevice && printerDevice.gatt.connected) {
-    return printerCharacteristic;
-  }
-
-  // Request Bluetooth connection with common thermal printer GATT services
-  printerDevice = await navigator.bluetooth.requestDevice({
-    acceptAllDevices: true,
-    optionalServices: [
-      '000018f0-0000-1000-8000-00805f9b34fb',
-      '00001101-0000-1000-8000-00805f9b34fb',
-      '49535343-fe7d-4ae5-8fa9-9fafd205e455',
-      'e7810a71-73ae-499d-8c15-faa9aef0c3f2'
-    ]
-  });
-
-  const server = await printerDevice.gatt.connect();
-  const services = await server.getPrimaryServices();
-
-  for (const service of services) {
-    const characteristics = await service.getCharacteristics();
-    for (const char of characteristics) {
-      if (char.properties.write || char.properties.writeWithoutResponse) {
-        printerCharacteristic = char;
-        return printerCharacteristic;
-      }
+    let name = item.name;
+    if (name.length > 14) {
+      txt += `${name}\n`;
+      txt += ''.padEnd(14) + String(item.qty).padStart(4) + itemRate.padStart(6) + itemTotal.padStart(8) + '\n';
+    } else {
+      txt += name.padEnd(14) + String(item.qty).padStart(4) + itemRate.padStart(6) + itemTotal.padStart(8) + '\n';
     }
-  }
-
-  throw new Error("No writable printing service found on this Bluetooth device.");
-}
-
-// Generate raw 32-column text string using native ESC/POS ESC @ initialization
-function generateRawAsciiReceipt(token, cartMap, total, dateStr) {
-  const W = 32;
-  const center = str => ' '.repeat(Math.max(0, Math.floor((W - str.length) / 2))) + str;
-  const justify = (l, r) => l + ' '.repeat(Math.max(1, W - l.length - r.length)) + r;
-  const divider = '-'.repeat(W) + '\n';
-
-  let txt = '\x1b\x40'; // ESC @ : Reset/Initialize printer
-  txt += center('VEG BITE') + '\n';
-  txt += center('College Canteen') + '\n';
-  txt += divider;
-  txt += `TOKEN NO: ${token}\n`;
-  txt += `Date: ${dateStr}\n`;
-  txt += divider;
-
-  cartMap.forEach((item) => {
-    txt += `${item.name}\n`;
-    txt += justify(`  ${item.qty} x Rs.${item.price}`, `Rs.${(item.qty * item.price).toFixed(2)}`) + '\n';
   });
 
   txt += divider;
-  txt += justify('TOTAL:', `Rs.${total.toFixed(2)}`) + '\n';
+  txt += `Total Items: ${totalItemsCount}\n`;
+  txt += `Total Quantity: ${totalQty}`.padEnd(24) + `${total.toFixed(2)}`.padStart(8) + '\n';
+  txt += 'Sub Total'.padEnd(24) + `${total.toFixed(2)}`.padStart(8) + '\n';
   txt += divider;
-  txt += center('*** Thank You! Visit Again ***') + '\n\n\n\n\n';
+
+  txt += 'TOTAL'.padEnd(20) + `Rs.${total.toFixed(2)}`.padStart(12) + '\n';
+  txt += 'Mode of Payment'.padEnd(24) + 'Cash'.padStart(8) + '\n';
+  txt += 'Received'.padEnd(24) + `${total.toFixed(2)}`.padStart(8) + '\n';
+  txt += divider;
+  txt += center('Thank You! Visit Again!') + '\n\n\n\n';
 
   return txt;
 }
 
-// Main printing handler triggered from the Cart Modal
-async function processAndPrint() {
+// Process Order & Trigger Thermal Print via Intent
+function processAndPrint() {
   if (state.cart.size === 0) return alert('Your cart is empty!');
 
-  try {
-    // 1. Establish direct Web Bluetooth GATT connection
-    const char = await getPrinterCharacteristic();
+  let sum = 0;
+  const orderItems = [];
+  state.cart.forEach(i => {
+    sum += i.qty * i.price;
+    orderItems.push({ name: i.name, price: i.price, qty: i.qty });
+  });
 
-    let sum = 0;
-    const orderItems = [];
-    state.cart.forEach(i => {
-      sum += i.qty * i.price;
-      orderItems.push({ name: i.name, price: i.price, qty: i.qty });
-    });
+  const dateStr = new Date().toLocaleString([], { 
+    day: '2-digit', 
+    month: '2-digit', 
+    year: '2-digit', 
+    hour: '2-digit', 
+    minute: '2-digit' 
+  });
 
-    const dateStr = new Date().toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
-    const rawText = generateRawAsciiReceipt(state.token, state.cart, sum, dateStr);
+  const rawText = generate4ColumnReceipt(state.token, state.cart, sum, dateStr);
 
-    // 2. Encode text payload to Uint8Array byte buffer
-    const encoder = new TextEncoder();
-    const data = encoder.encode(rawText);
+  // Save record to LocalStorage and Firestore
+  const orderRecord = { 
+    token: state.token, 
+    items: orderItems, 
+    total: sum, 
+    createdAt: new Date().toISOString() 
+  };
+  const sales = JSON.parse(localStorage.getItem('vb_sales')) || [];
+  sales.push(orderRecord);
+  localStorage.setItem('vb_sales', JSON.stringify(sales));
+  if (db) db.collection('orders').add(orderRecord);
 
-    // 3. Send raw ESC/POS bytes over Bluetooth in small chunks (20 bytes per BLE packet)
-    const CHUNK_SIZE = 20;
-    for (let i = 0; i < data.length; i += CHUNK_SIZE) {
-      const chunk = data.slice(i, i + CHUNK_SIZE);
-      if (char.properties.writeWithoutResponse) {
-        await char.writeValueWithoutResponse(chunk);
-      } else {
-        await char.writeValue(chunk);
-      }
-    }
+  closeCartModal();
 
-    // 4. Save order to local storage and Firestore
-    const orderRecord = { token: state.token, items: orderItems, total: sum, createdAt: new Date().toISOString() };
-    const sales = JSON.parse(localStorage.getItem('vb_sales')) || [];
-    sales.push(orderRecord);
-    localStorage.setItem('vb_sales', JSON.stringify(sales));
-    if (db) db.collection('orders').add(orderRecord);
+  // Send raw text payload to RawBT
+  const base64Data = btoa(unescape(encodeURIComponent(rawText)));
+  const intentUrl = "intent:base64," + base64Data + "#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;S.bwtype=text;end;";
+  window.location.href = intentUrl;
 
-    closeCartModal();
-
-    // 5. Reset order counters and cart UI
-    state.token++;
-    localStorage.setItem('vb_token', state.token);
-    state.cart.clear();
-    updateTokenUI();
-    renderItems();
-    updateCartUI();
-
-  } catch (err) {
-    console.error("Web Bluetooth Print Error:", err);
-    alert("Print Error: " + err.message);
-  }
+  // Reset state
+  state.token++;
+  localStorage.setItem('vb_token', state.token);
+  state.cart.clear();
+  updateTokenUI();
+  renderItems();
+  updateCartUI();
 }
-// History Modal Functions
+
+// Sales History Modal Logic
 function openHistoryModal() {
   const today = new Date().toISOString().split('T')[0];
   const dateInput = document.getElementById('historyDateFilter');
-  if (!dateInput.value) {
+  if (dateInput && !dateInput.value) {
     dateInput.value = today;
   }
   renderHistory();
@@ -436,18 +343,22 @@ function closeHistoryModal() {
 }
 
 function renderHistory() {
-  const selectedDate = document.getElementById('historyDateFilter').value;
+  const dateInput = document.getElementById('historyDateFilter');
+  const selectedDate = dateInput ? dateInput.value : new Date().toISOString().split('T')[0];
   const historyList = document.getElementById('historyList');
   const sales = JSON.parse(localStorage.getItem('vb_sales')) || [];
 
-  // Filter orders matching the selected date
   const filteredSales = sales.filter(s => s.createdAt && s.createdAt.startsWith(selectedDate)).reverse();
 
   let dayTotal = 0;
   filteredSales.forEach(s => dayTotal += (s.total || 0));
 
-  document.getElementById('historyDayRev').textContent = `₹${dayTotal.toFixed(2)}`;
-  document.getElementById('historyDayCount').textContent = filteredSales.length;
+  const dayRevEl = document.getElementById('historyDayRev');
+  const dayCountEl = document.getElementById('historyDayCount');
+  if (dayRevEl) dayRevEl.textContent = `₹${dayTotal.toFixed(2)}`;
+  if (dayCountEl) dayCountEl.textContent = filteredSales.length;
+
+  if (!historyList) return;
 
   if (filteredSales.length === 0) {
     historyList.innerHTML = '<div class="empty-state">No orders recorded for this date.</div>';
